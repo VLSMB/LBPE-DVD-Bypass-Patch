@@ -19,6 +19,7 @@ funcAddr dd FUNC_COUNT dup(0)
 
 	.data?
 pathBuffer db 300 dup(?)
+wow64Flag dd 0
 
 	.const
 PROGRESS_NAME db "REALLIVE.EXE", 0
@@ -28,7 +29,6 @@ ERROR_MSG db "Bypass DVD Patch Init Error", 0
 kernelbase db "kernelbase.dll", 0
 iphlpapi db "iphlpapi.dll", 0
 getVersionExA db "GetVersionExA", 0
-isWow64Process db "IsWow64Process", 0
 getAdaptersInfo db "GetAdaptersInfo", 0
 
 strGetFileVersionInfoA db "GetFileVersionInfoA", 0
@@ -105,6 +105,11 @@ HookInit proc
 	test eax, eax
 	jne __hook_init_ret
 
+	push offset wow64Flag
+	call GetCurrentProcess
+	push eax
+	call IsWow64Process
+
 	push 48
 	push offset MEG_TITLE
 	push offset WARNING_MSG
@@ -115,13 +120,6 @@ HookInit proc
 	push offset kernelbase
 	call GetApiAddress
 	push ProxyGetVersionExA
-	push eax
-	call WriteHook
-
-	push offset isWow64Process
-	push offset kernelbase
-	call GetApiAddress
-	push ProxyIsWow64Process
 	push eax
 	call WriteHook
 
@@ -358,10 +356,24 @@ ProxyGetAdaptersInfo proc
 	mov dword ptr [eax], 'kcoM'
 	mov dword ptr [eax+4], 'adA-'
 	mov dword ptr [eax+8], 'retp'
+
+	mov eax, [wow64Flag]
+	test eax, eax
+	je __proxy_adapter_32_begin
+
 	mov eax, [ebp+8]
 	lea eax, [eax+404]
 	mov dword ptr [eax], 3C2B1A02H
 	mov word ptr [eax+4], 5E4DH
+	jmp __proxy_adapter_32_end
+
+__proxy_adapter_32_begin:
+	mov eax, [ebp+8]
+	lea eax, [eax+404]
+	mov dword ptr [eax], 3C2B0002H
+	mov word ptr [eax+4], 0DC4DH
+
+__proxy_adapter_32_end:
 	mov eax, [ebp+8]
 	mov dword ptr [eax+400], 6
 
@@ -375,18 +387,6 @@ __proxy_adapter_ret:
 	leave
 	ret 8
 ProxyGetAdaptersInfo endp
-	
-ProxyIsWow64Process proc
-	push ebp
-	mov ebp, esp
-
-	mov eax, [ebp+12]
-	mov dword ptr [eax], 1
-
-	mov eax, 1
-	leave
-	ret 8
-ProxyIsWow64Process endp
 
 DummyFuncForLoadDll proc
 	push esi
@@ -394,7 +394,6 @@ DummyFuncForLoadDll proc
 	push ebx
 	dec ebp
 	inc edx
-	call IsWow64Process
 	call GetVersionExA
 	call GetAdaptersInfo
 	dec esi
